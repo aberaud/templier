@@ -7,20 +7,32 @@ The result is printed to the standard output.
 
 Simple usage:
 ```bash
-$ templier a b c
-From {} to {} to {}
+$ templier knight sword
+Hello {}, here is your {}
 ```
 Output:
 ```bash
-From a to b to c
+Hello knight, here is your sword
 ```
 
 With indexed placeholders:
 ```bash
-$ templier a b c
-From {2} to {1} to {2}
+$ templier knight sword
+Hello {1}, here is your {0}
 ```
 Output:
 ```bash
-From c to b to c
+Hello sword, here is your knight
+```
+
+## Build
+
+```bash
+$ cargo build
+```
+
+For minimal size:
+```bash
+$ export RUST_TARGET=$(rustc -vV | grep host | cut -d ' ' -f 2)
+$ cargo +nightly build -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort --target $RUST_TARGET --release
 ```
