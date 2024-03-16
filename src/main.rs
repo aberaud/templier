@@ -1,58 +1,62 @@
 use std::env;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
-fn main() {
+fn main() -> Result<(), &'static str> {
     let args: Vec<String> = env::args().skip(1).collect();
 
-    // Reading standard input
-    let mut input = String::new();
-    io::stdin().read_to_string(&mut input).expect("Failed to read from stdin");
-
-    // Check if input contains {n} tokens and replace them if present
-    let mut output = input.clone();
+    let reader = io::stdin();
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
     let mut found_indexed_tokens = false;
+    let mut last_arg = 0; // index of the last argument used if there are no indexed tokens
 
-    for (i, arg) in args.iter().enumerate() {
-        let token = format!("{{{}}}", i);
+    for line in reader.lines() {
+        let mut output = line.expect("Failed to read line from stdin");
         let mut last_end = 0;
-        while let Some(start) = output[last_end..].find(&token) {
-            found_indexed_tokens = true;
+        while let Some(start) = output[last_end..].find('{') {
             let start = start + last_end;
-            let end = start + token.len();
-            output.replace_range(start..end, arg);
-            last_end = start + arg.len();
+            let end = start + 1;
+            if start > 0 && &output[start - 1..start] == "\\" {
+                last_end = end;
+                continue;
+            }
+            let end = output[start..].find('}').expect("Error: found unescaped '{' but no matching '}'") + start;
+            let token = &output[start + 1..end];
+            if token.is_empty() {
+                if found_indexed_tokens {
+                    return Err("Found both indexed and non-indexed tokens");
+                }
+                if last_arg >= args.len() {
+                    return Err("Not enough arguments to replace all tokens");
+                }
+                output.replace_range(start..end + 1, &args[last_arg]);
+                last_end = start + args[last_arg].len();
+                last_arg += 1;
+            }
+            else if token.parse::<usize>().is_ok() {
+                if last_arg != 0 {
+                    return Err("Found both indexed and non-indexed tokens");
+                }
+                found_indexed_tokens = true;
+                let index = token.parse::<usize>().unwrap();
+                if index >= args.len() {
+                    return Err("Index out of range");
+                }
+                output.replace_range(start..end + 1, &args[index]);
+                last_end = start + args[index].len();
+            } else {
+                return Err("Invalid token");
+            }
         }
+        
+        output = output.replace("\\{", "{")
+                        .replace("\\}", "}")
+                        .replace("\\\\", "\\");
+        writer.write_all(output.as_bytes()).expect("Failed to write to stdout");
+        writer.write_all(b"\n").expect("Failed to write to stdout");
     }
-
-    // If no {n} tokens were found but there are {} tokens, replace them in order
-    let mut last_end = 0;
-    for arg in args.iter() {
-        if let Some(start) = output[last_end..].find("{}") {
-            if found_indexed_tokens {
-                eprintln!("Error: found both indexed and non-indexed tokens");
-                std::process::exit(1);
-            }        
-            let start = start + last_end;
-            let end = start + 2;
-            output.replace_range(start..end, arg);
-            last_end = start + arg.len();
-        } else if found_indexed_tokens {
-            break;
-        } else {
-            eprintln!("Error: too many arguments to replace all tokens");
-            std::process::exit(1);
-        }
+    if last_arg != 0 && last_arg < args.len() - 1 {
+        return Err("Too few tokens to replace all arguments");
     }
-    if output[last_end..].contains("{}") {
-        eprintln!("Error: not enough arguments to replace all tokens");
-        std::process::exit(1);
-    }
-
-    // Replace escaped { and } with their unescaped versions as well as \\ with \
-    output = output.replace("\\{", "{")
-                   .replace("\\}", "}")
-                   .replace("\\\\", "\\");
-
-    // Printing the result to standard output
-    io::stdout().write_all(output.as_bytes()).unwrap();
+    Ok(())
 }
